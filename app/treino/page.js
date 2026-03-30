@@ -4,16 +4,16 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 const exercisesByGroup = {
-  "Peito": ["Supino reto", "Supino inclinado", "Supino declinado", "Crucifixo", "Crossover", "Peck deck", "Flexão de braços"],
-  "Costas": ["Puxada frontal", "Remada curvada", "Remada sentada", "Remada unilateral", "Levantamento terra", "Pulley frente", "Barra fixa"],
-  "Pernas": ["Agachamento livre", "Leg press", "Cadeira extensora", "Cadeira flexora", "Stiff", "Panturrilha em pé", "Panturrilha sentado", "Hack machine", "Agachamento sumô"],
-  "Ombros": ["Desenvolvimento", "Elevação lateral", "Elevação frontal", "Crucifixo inverso", "Encolhimento", "Desenvolvimento militar"],
-  "Bíceps": ["Rosca direta", "Rosca alternada", "Rosca concentrada", "Rosca scott", "Rosca martelo", "Rosca 21"],
-  "Tríceps": ["Tríceps pulley", "Tríceps testa", "Tríceps coice", "Mergulho", "Tríceps francês", "Tríceps corda"],
-  "Abdômen": ["Abdominal crunch", "Prancha", "Elevação de pernas", "Abdominal infra", "Russian twist", "Abdominal oblíquo"],
-  "Glúteos": ["Elevação pélvica", "Agachamento sumô", "Cadeira abdutora", "Glúteo no cabo", "Passada", "Cadeira flexora"],
+  "Peito": ["Supino reto", "Supino inclinado", "Supino declinado", "Crucifixo", "Crossover", "Peck deck", "Flexão de braços", "Supino com halteres", "Pullover"],
+  "Costas": ["Puxada frontal", "Remada curvada", "Remada sentada", "Remada unilateral", "Levantamento terra", "Pulley frente", "Barra fixa", "Remada máquina", "Puxada triângulo"],
+  "Pernas": ["Agachamento livre", "Leg press", "Cadeira extensora", "Cadeira flexora", "Stiff", "Panturrilha em pé", "Panturrilha sentado", "Hack machine", "Agachamento sumô", "Afundo", "Cadeira adutora", "Cadeira abdutora"],
+  "Ombros": ["Desenvolvimento", "Elevação lateral", "Elevação frontal", "Crucifixo inverso", "Encolhimento", "Desenvolvimento militar", "Elevação lateral polia"],
+  "Bíceps": ["Rosca direta", "Rosca alternada", "Rosca concentrada", "Rosca scott", "Rosca martelo", "Rosca 21", "Rosca direta barra w", "Rosca inversa"],
+  "Tríceps": ["Tríceps pulley", "Tríceps testa", "Tríceps coice", "Mergulho", "Tríceps francês", "Tríceps corda", "Tríceps banco"],
+  "Abdômen": ["Abdominal crunch", "Prancha", "Elevação de pernas", "Abdominal infra", "Russian twist", "Abdominal oblíquo", "Abdominal máquina", "Prancha lateral"],
+  "Glúteos": ["Elevação pélvica", "Agachamento sumô", "Cadeira abdutora", "Glúteo no cabo", "Passada", "Cadeira flexora", "Hip thrust"],
   "Trapézio": ["Encolhimento com halteres", "Remada alta", "Encolhimento na máquina"],
-  "Antebraço": ["Rosca punho", "Rosca inversa", "Grip"]
+  "Antebraço": ["Rosca punho", "Rosca inversa", "Grip", "Farmer's walk"]
 }
 
 export default function TreinoPage() {
@@ -24,11 +24,17 @@ export default function TreinoPage() {
   const [loading, setLoading] = useState(true)
   const [editingDays, setEditingDays] = useState([])
   const [planName, setPlanName] = useState('')
+  const [expandedPlans, setExpandedPlans] = useState({})
   const [trainingSession, setTrainingSession] = useState(null)
   const [selectedDay, setSelectedDay] = useState(0)
+  const [timerInterval, setTimerInterval] = useState(null)
+  const [elapsedTime, setElapsedTime] = useState(0)
 
   useEffect(() => {
     fetchData()
+    return () => {
+      if (timerInterval) clearInterval(timerInterval)
+    }
   }, [])
 
   const fetchData = async () => {
@@ -46,6 +52,22 @@ export default function TreinoPage() {
     }
   }
 
+  const fetchSessions = async () => {
+    try {
+      const res = await fetch('/api/workout/sessions')
+      if (res.ok) {
+        const data = await res.json()
+        // Atualiza os planos com os dados das sessões
+        setWorkoutPlans(prev => prev.map(plan => {
+          const sessions = data.filter(s => s.workoutPlanId === plan.id)
+          return { ...plan, sessions }
+        }))
+      }
+    } catch (error) {
+      console.error('Erro ao carregar sessões:', error)
+    }
+  }
+
   const activateWorkout = async (id) => {
     const res = await fetch('/api/workout/activate', {
       method: 'POST',
@@ -56,6 +78,13 @@ export default function TreinoPage() {
       setCurrentWorkoutId(id)
       fetchData()
     }
+  }
+
+  const toggleExpandPlan = (planId) => {
+    setExpandedPlans(prev => ({
+      ...prev,
+      [planId]: !prev[planId]
+    }))
   }
 
   const addDay = () => {
@@ -106,6 +135,15 @@ export default function TreinoPage() {
   }
 
   const saveWorkoutPlan = async () => {
+    if (!planName) {
+      alert('Por favor, dê um nome ao plano')
+      return
+    }
+    if (editingDays.length === 0) {
+      alert('Adicione pelo menos um dia de treino')
+      return
+    }
+
     const planData = {
       name: planName,
       days: editingDays
@@ -122,28 +160,39 @@ export default function TreinoPage() {
       fetchData()
       setEditingDays([])
       setPlanName('')
+    } else {
+      const error = await res.json()
+      alert('Erro ao salvar: ' + (error.error || 'Tente novamente'))
     }
   }
 
-  const startTraining = async () => {
-    const activePlan = workoutPlans.find(p => p.id === currentWorkoutId)
-    if (!activePlan) return
-    
+  const startTraining = async (planId, dayIndex) => {
     const res = await fetch('/api/workout/session/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workoutPlanId: currentWorkoutId, dayIndex: selectedDay })
+      body: JSON.stringify({ workoutPlanId: planId, dayIndex })
     })
     
     if (res.ok) {
       const session = await res.json()
       setTrainingSession(session)
+      setElapsedTime(0)
+      const interval = setInterval(() => {
+        setElapsedTime(prev => prev + 1)
+      }, 1000)
+      setTimerInterval(interval)
     }
   }
 
-  const updateSeriesWeight = async (exerciseIdx, setIdx, weight) => {
+  const updateSeriesWeight = async (exerciseIdx, setIdx, weight, exercise) => {
     if (!trainingSession) return
     
+    // Atualizar localmente
+    const newSeriesData = { ...trainingSession.seriesData }
+    newSeriesData[`${exerciseIdx}_${setIdx}`] = { weight }
+    setTrainingSession({ ...trainingSession, seriesData: newSeriesData })
+    
+    // Salvar no servidor
     const res = await fetch('/api/workout/session/update', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -151,18 +200,23 @@ export default function TreinoPage() {
         sessionId: trainingSession.id,
         exerciseIdx,
         setIdx,
-        weight
+        weight,
+        exerciseName: exercise.name
       })
     })
     
     if (res.ok) {
       const updated = await res.json()
       setTrainingSession(updated)
+      // Recarregar dados para atualizar histórico
+      fetchData()
     }
   }
 
   const finishTraining = async () => {
     if (!trainingSession) return
+    
+    if (timerInterval) clearInterval(timerInterval)
     
     const res = await fetch('/api/workout/session/finish', {
       method: 'PUT',
@@ -172,151 +226,261 @@ export default function TreinoPage() {
     
     if (res.ok) {
       setTrainingSession(null)
+      setTimerInterval(null)
+      setElapsedTime(0)
       fetchData()
+      fetchSessions()
+      alert('Treino finalizado com sucesso! 🎉')
     }
+  }
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
   const activePlan = workoutPlans.find(p => p.id === currentWorkoutId)
 
-  if (loading) return <div className="text-center py-10">Carregando...</div>
+  if (loading) return (
+    <div className="flex justify-center items-center h-64">
+      <div className="text-gray-500">Carregando planos de treino...</div>
+    </div>
+  )
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Planos de Treino</h1>
+      {/* Cabeçalho */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-2xl font-bold text-gray-800">🏋️ Planos de Treino</h1>
         <button
           onClick={() => {
             setEditingDays([])
             setPlanName('')
             setShowModal(true)
           }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
         >
           + Novo Plano
         </button>
       </div>
 
-      {activePlan ? (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">Plano Ativo: {activePlan.name}</h2>
+      {/* Sessão de treino ativa */}
+      {trainingSession && activePlan && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-green-800">🔥 Treino em Andamento</h2>
+            <div className="text-2xl font-mono font-bold text-green-700">{formatTime(elapsedTime)}</div>
+          </div>
+          <p className="text-green-700 mb-4">
+            Plano: <strong>{activePlan.name}</strong> | 
+            Dia: <strong>{activePlan.days[trainingSession.dayIndex]?.name}</strong>
+          </p>
           
-          {!trainingSession ? (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Selecione o dia</label>
-                <select
-                  value={selectedDay}
-                  onChange={(e) => setSelectedDay(parseInt(e.target.value))}
-                  className="w-full border rounded-lg px-3 py-2"
-                >
-                  {activePlan.days.map((day, idx) => (
-                    <option key={idx} value={idx}>{day.name}</option>
-                  ))}
-                </select>
+          {activePlan.days[trainingSession.dayIndex]?.exercises.map((exercise, exIdx) => (
+            <div key={exIdx} className="bg-white rounded-lg p-4 mb-4 shadow">
+              <h3 className="font-semibold text-lg mb-2">{exercise.name}</h3>
+              <p className="text-sm text-gray-600 mb-3">
+                Grupo: {exercise.group} | Séries: {exercise.sets} | Reps: {exercise.reps}
+              </p>
+              <p className="text-xs text-gray-500 mb-3">
+                💪 Máximo já usado: <strong className="text-blue-600">{exercise.maxWeightEver || 0} kg</strong>
+                {exercise.lastWeights?.length > 0 && ` | Último treino: ${exercise.lastWeights[exercise.lastWeights.length - 1]} kg`}
+              </p>
+              
+              <div className="space-y-2">
+                {[...Array(exercise.sets)].map((_, setIdx) => {
+                  const seriesKey = `${exIdx}_${setIdx}`
+                  const seriesData = trainingSession.seriesData?.[seriesKey] || {}
+                  return (
+                    <div key={setIdx} className="flex items-center gap-3 bg-gray-50 p-2 rounded">
+                      <span className="text-sm font-medium w-16">Série {setIdx + 1}:</span>
+                      <input
+                        type="number"
+                        placeholder="Peso (kg)"
+                        value={seriesData.weight || ''}
+                        onChange={(e) => updateSeriesWeight(exIdx, setIdx, parseFloat(e.target.value), exercise)}
+                        className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        step="0.5"
+                      />
+                      <span className="text-sm">kg</span>
+                      <span className="text-sm text-gray-500">x {exercise.reps} reps</span>
+                    </div>
+                  )
+                })}
               </div>
-              
-              <button
-                onClick={startTraining}
-                className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700"
-              >
-                ▶️ Iniciar Treino
-              </button>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <p className="text-center font-semibold">
-                  Treino em andamento: {activePlan.days[trainingSession.dayIndex]?.name}
-                </p>
-                <p className="text-center text-sm text-gray-600">
-                  Iniciado em: {new Date(trainingSession.startTime).toLocaleTimeString()}
-                </p>
-              </div>
-              
-              {activePlan.days[trainingSession.dayIndex]?.exercises.map((exercise, exIdx) => (
-                <div key={exIdx} className="border rounded-lg p-4">
-                  <h3 className="font-semibold text-lg mb-2">{exercise.name}</h3>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Grupo: {exercise.group} | Séries: {exercise.sets} | Reps: {exercise.reps}
-                  </p>
-                  <p className="text-xs text-gray-500 mb-2">
-                    💪 Máximo já usado: {exercise.maxWeightEver || 0} kg
-                    {exercise.lastWeights?.length > 0 && ` | Último: ${exercise.lastWeights[exercise.lastWeights.length - 1]} kg`}
-                  </p>
-                  
-                  {[...Array(exercise.sets)].map((_, setIdx) => {
-                    const seriesKey = `${exIdx}_${setIdx}`
-                    const seriesData = trainingSession.seriesData?.[seriesKey] || {}
-                    return (
-                      <div key={setIdx} className="flex items-center gap-2 mt-2">
-                        <span className="text-sm font-medium w-16">Série {setIdx + 1}:</span>
-                        <input
-                          type="number"
-                          placeholder="Peso (kg)"
-                          value={seriesData.weight || ''}
-                          onChange={(e) => updateSeriesWeight(exIdx, setIdx, parseFloat(e.target.value))}
-                          className="flex-1 border rounded-lg px-3 py-2 text-sm"
-                        />
-                        <span className="text-sm">kg</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              ))}
-              
-              <button
-                onClick={finishTraining}
-                className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700"
-              >
-                ✅ Finalizar Treino
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-          <p className="text-yellow-800">Nenhum plano de treino ativo.</p>
-          <p className="text-yellow-600 text-sm mt-2">Crie um novo plano clicando no botão acima.</p>
+          ))}
+          
+          <button
+            onClick={finishTraining}
+            className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-medium transition-colors mt-4"
+          >
+            ✅ Finalizar Treino
+          </button>
         </div>
       )}
 
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Seus Planos</h2>
-        {workoutPlans.map(plan => (
-          <div key={plan.id} className="bg-white rounded-lg shadow p-4">
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="font-semibold text-lg">{plan.name}</h3>
-                <p className="text-sm text-gray-600">{plan.days.length} dias de treino</p>
-                <p className="text-sm text-gray-500">
-                  Criado em: {new Date(plan.createdAt).toLocaleDateString()}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                {currentWorkoutId === plan.id ? (
-                  <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-                    ✅ ATIVO
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => activateWorkout(plan.id)}
-                    className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-sm hover:bg-blue-200"
-                  >
-                    Ativar
-                  </button>
-                )}
-              </div>
+      {/* Plano ativo */}
+      {activePlan && !trainingSession && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <h2 className="text-xl font-bold text-blue-800 mb-4">📋 Plano Ativo: {activePlan.name}</h2>
+          <div className="flex flex-col sm:flex-row gap-4 items-end">
+            <div className="flex-1">
+              <label className="block text-sm font-medium mb-1">Selecione o dia para treinar</label>
+              <select
+                value={selectedDay}
+                onChange={(e) => setSelectedDay(parseInt(e.target.value))}
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {activePlan.days.map((day, idx) => (
+                  <option key={idx} value={idx}>{day.name}</option>
+                ))}
+              </select>
             </div>
+            <button
+              onClick={() => startTraining(currentWorkoutId, selectedDay)}
+              className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors"
+            >
+              ▶️ Iniciar Treino
+            </button>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
+      {/* Lista de planos */}
+      {workoutPlans.length === 0 ? (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-8 text-center">
+          <p className="text-yellow-800">Nenhum plano de treino criado ainda.</p>
+          <p className="text-yellow-600 text-sm mt-2">Clique em "+ Novo Plano" para começar!</p>
+        </div>
+      ) : (
+        <div className="grid gap-6">
+          {workoutPlans.map(plan => (
+            <div key={plan.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+              {/* Cabeçalho do plano */}
+              <div className="p-4 border-b bg-gray-50">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <h3 className="font-semibold text-lg">{plan.name}</h3>
+                      {currentWorkoutId === plan.id && (
+                        <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-medium">
+                          ✅ ATIVO
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {plan.days?.length || 0} dias de treino
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Criado em: {new Date(plan.createdAt).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {currentWorkoutId !== plan.id && (
+                      <button
+                        onClick={() => activateWorkout(plan.id)}
+                        className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-sm hover:bg-blue-200 transition-colors"
+                      >
+                        Ativar
+                      </button>
+                    )}
+                    <button
+                      onClick={() => toggleExpandPlan(plan.id)}
+                      className="text-gray-500 hover:text-gray-700 px-3 py-1 rounded-lg text-sm"
+                    >
+                      {expandedPlans[plan.id] ? '▲ Esconder' : '▼ Ver detalhes'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Detalhes expandidos */}
+              {expandedPlans[plan.id] && plan.days && plan.days.length > 0 && (
+                <div className="p-4 space-y-4">
+                  {plan.days.map((day, dayIdx) => (
+                    <div key={dayIdx} className="border rounded-lg overflow-hidden">
+                      <div className="bg-gray-100 px-4 py-2 font-semibold">
+                        📅 {day.name}
+                      </div>
+                      <div className="p-3">
+                        {day.exercises && day.exercises.length > 0 ? (
+                          <div className="space-y-3">
+                            {day.exercises.map((exercise, exIdx) => (
+                              <div key={exIdx} className="bg-gray-50 rounded-lg p-3">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <h4 className="font-medium">{exercise.name}</h4>
+                                    <p className="text-xs text-gray-500">Grupo: {exercise.group}</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-sm font-medium">{exercise.sets} séries</p>
+                                    <p className="text-sm">{exercise.reps} repetições</p>
+                                  </div>
+                                </div>
+                                {exercise.maxWeightEver > 0 && (
+                                  <div className="mt-2 text-xs text-blue-600">
+                                    🏆 Máximo já usado: {exercise.maxWeightEver} kg
+                                  </div>
+                                )}
+                                {exercise.lastWeights && exercise.lastWeights.length > 0 && (
+                                  <div className="mt-1 text-xs text-gray-500">
+                                    📊 Últimos pesos: {exercise.lastWeights.slice(-3).join(' kg, ')} kg
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-gray-500 text-sm">Nenhum exercício cadastrado</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Sessões realizadas */}
+              {plan.sessions && plan.sessions.length > 0 && expandedPlans[plan.id] && (
+                <div className="px-4 pb-4">
+                  <details className="mt-2">
+                    <summary className="text-sm text-blue-600 cursor-pointer">📊 Histórico de treinos ({plan.sessions.length})</summary>
+                    <div className="mt-2 space-y-2">
+                      {plan.sessions.slice(-5).reverse().map(session => (
+                        <div key={session.id} className="bg-gray-50 rounded p-2 text-sm">
+                          <div className="flex justify-between">
+                            <span>Dia {session.dayIndex + 1}</span>
+                            <span className="text-gray-500">{new Date(session.startTime).toLocaleDateString('pt-BR')}</span>
+                          </div>
+                          {session.endTime && (
+                            <div className="text-xs text-gray-500">
+                              Duração: {Math.round((new Date(session.endTime) - new Date(session.startTime)) / 60000)} min
+                            </div>
+                          )}
+                          {session.seriesData && Object.keys(session.seriesData).length > 0 && (
+                            <div className="text-xs text-gray-500">
+                              Séries realizadas: {Object.keys(session.seriesData).length}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal de criação */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center">
-              <h2 className="text-xl font-bold">Criar Plano de Treino</h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-500 text-2xl">
+              <h2 className="text-xl font-bold">Criar Novo Plano de Treino</h2>
+              <button onClick={() => setShowModal(false)} className="text-gray-500 text-2xl hover:text-gray-700">
                 ×
               </button>
             </div>
@@ -328,21 +492,28 @@ export default function TreinoPage() {
                   type="text"
                   value={planName}
                   onChange={(e) => setPlanName(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2"
-                  placeholder="Ex: ABC 2x, Push/Pull/Legs, etc."
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ex: ABC 2x, Push/Pull/Legs, Full Body"
                 />
               </div>
               
               <div>
-                <div className="flex justify-between items-center mb-2">
+                <div className="flex justify-between items-center mb-3">
                   <label className="text-sm font-medium">Dias de Treino</label>
-                  <button onClick={addDay} className="text-blue-600 text-sm">
+                  <button onClick={addDay} className="text-blue-600 text-sm hover:text-blue-700">
                     + Adicionar Dia
                   </button>
                 </div>
                 
+                {editingDays.length === 0 && (
+                  <div className="bg-gray-50 rounded-lg p-8 text-center text-gray-500">
+                    <p>Nenhum dia de treino adicionado</p>
+                    <p className="text-xs mt-1">Clique em "+ Adicionar Dia" para começar</p>
+                  </div>
+                )}
+                
                 {editingDays.map((day, dayIdx) => (
-                  <div key={dayIdx} className="bg-gray-50 rounded-lg p-4 mb-3">
+                  <div key={dayIdx} className="bg-gray-50 rounded-lg p-4 mb-4">
                     <div className="flex justify-between items-center mb-3">
                       <input
                         type="text"
@@ -352,20 +523,21 @@ export default function TreinoPage() {
                           newDays[dayIdx].name = e.target.value
                           setEditingDays(newDays)
                         }}
-                        className="border rounded-lg px-2 py-1 text-sm flex-1 mr-2"
+                        className="border rounded-lg px-3 py-1 text-sm font-medium flex-1 mr-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Nome do dia"
                       />
-                      <button onClick={() => removeDay(dayIdx)} className="text-red-500 text-sm">
+                      <button onClick={() => removeDay(dayIdx)} className="text-red-500 text-sm hover:text-red-700">
                         Remover Dia
                       </button>
                     </div>
                     
                     {day.exercises.map((exercise, exIdx) => (
-                      <div key={exIdx} className="bg-white rounded p-3 mb-2">
-                        <div className="flex gap-2 mb-2">
+                      <div key={exIdx} className="bg-white rounded-lg p-3 mb-2">
+                        <div className="flex flex-wrap gap-2 mb-2">
                           <select
                             value={exercise.group}
                             onChange={(e) => updateExercise(dayIdx, exIdx, 'group', e.target.value)}
-                            className="flex-1 border rounded-lg px-2 py-1 text-sm"
+                            className="flex-1 min-w-[120px] border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
                             {Object.keys(exercisesByGroup).map(group => (
                               <option key={group} value={group}>{group}</option>
@@ -375,7 +547,7 @@ export default function TreinoPage() {
                           <select
                             value={exercise.name}
                             onChange={(e) => updateExercise(dayIdx, exIdx, 'name', e.target.value)}
-                            className="flex-2 border rounded-lg px-2 py-1 text-sm"
+                            className="flex-2 min-w-[150px] border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
                             {exercisesByGroup[exercise.group].map(ex => (
                               <option key={ex} value={ex}>{ex}</option>
@@ -383,7 +555,7 @@ export default function TreinoPage() {
                             <option value="custom">+ Personalizado</option>
                           </select>
                           
-                          <button onClick={() => removeExercise(dayIdx, exIdx)} className="text-red-500 text-sm">
+                          <button onClick={() => removeExercise(dayIdx, exIdx)} className="text-red-500 text-sm hover:text-red-700">
                             ✖️
                           </button>
                         </div>
@@ -393,14 +565,14 @@ export default function TreinoPage() {
                             type="number"
                             value={exercise.sets}
                             onChange={(e) => updateExercise(dayIdx, exIdx, 'sets', e.target.value)}
-                            className="w-20 border rounded-lg px-2 py-1 text-sm"
+                            className="w-24 border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Séries"
                           />
                           <input
                             type="number"
                             value={exercise.reps}
                             onChange={(e) => updateExercise(dayIdx, exIdx, 'reps', e.target.value)}
-                            className="w-20 border rounded-lg px-2 py-1 text-sm"
+                            className="w-24 border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="Reps"
                           />
                         </div>
@@ -409,7 +581,7 @@ export default function TreinoPage() {
                     
                     <button
                       onClick={() => addExercise(dayIdx)}
-                      className="text-blue-600 text-sm mt-2"
+                      className="text-blue-600 text-sm mt-2 hover:text-blue-700"
                     >
                       + Adicionar Exercício
                     </button>
@@ -419,10 +591,9 @@ export default function TreinoPage() {
               
               <button
                 onClick={saveWorkoutPlan}
-                disabled={!planName || editingDays.length === 0}
-                className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-medium transition-colors"
               >
-                Salvar e Ativar Plano
+                💾 Salvar e Ativar Plano
               </button>
             </div>
           </div>
