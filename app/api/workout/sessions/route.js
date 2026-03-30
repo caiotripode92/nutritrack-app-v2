@@ -10,16 +10,16 @@ export async function GET() {
     
     const sessions = await prisma.workoutSession.findMany({
       where: { userId: user.id },
-      include: { workoutPlan: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { startTime: 'desc' },
       take: 50
     })
     
     return Response.json(sessions.map(s => ({
       ...s,
-      seriesData: JSON.parse(s.seriesData)
+      seriesData: JSON.parse(s.seriesData || '{}')
     })))
   } catch (error) {
-    return Response.json({ error: 'Erro interno' }, { status: 500 })
+    console.error('Erro ao listar sessões:', error)
+    return Response.json({ error: error.message }, { status: 500 })
   }
 }
