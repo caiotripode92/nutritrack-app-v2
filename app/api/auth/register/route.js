@@ -34,10 +34,13 @@ export async function POST(request) {
       user: { id: user.id, name: user.name, email: user.email } 
     })
     
-    response.headers.set(
-      'Set-Cookie',
-      `token=${token}; HttpOnly; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`
-    )
+    response.cookies.set('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/'
+    })
     
     return response
   } catch (error) {
