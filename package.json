@@ -13,10 +13,13 @@
     "bcryptjs": "^2.4.3",
     "chart.js": "^4.4.0",
     "jsonwebtoken": "^9.0.2",
-    "next": "14.0.4",
+    "next": "14.2.0",
     "react": "^18.2.0",
     "react-chartjs-2": "^5.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "tailwindcss": "^3.4.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.31"
   },
   "devDependencies": {
     "prisma": "^5.7.0"
