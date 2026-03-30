@@ -22,17 +22,18 @@ export async function POST(request) {
     
     const token = await createToken(user.id)
     
-    // Criar resposta com o cookie
     const response = Response.json({ 
       success: true,
       user: { id: user.id, name: user.name, email: user.email } 
     })
     
-    // Adicionar cookie no header
-    response.headers.set(
-      'Set-Cookie',
-      `token=${token}; HttpOnly; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`
-    )
+    response.cookies.set('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/'
+    })
     
     return response
   } catch (error) {
