@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { prisma } from '@/lib/db'
 import { createToken } from '@/lib/auth'
 import bcrypt from 'bcryptjs'
