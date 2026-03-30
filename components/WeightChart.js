@@ -27,7 +27,7 @@ export default function WeightChart({ weightHistory }) {
   const sorted = [...history].sort((a, b) => new Date(a.date) - new Date(b.date))
   
   const data = {
-    labels: sorted.map(w => w.date.slice(5)),
+    labels: sorted.map(w => w.date?.slice(5) || ''),
     datasets: [
       {
         label: 'Peso (kg)',
