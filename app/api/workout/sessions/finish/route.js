@@ -10,13 +10,26 @@ export async function PUT(request) {
     
     const { sessionId } = await request.json()
     
+    if (!sessionId) {
+      return Response.json({ error: 'ID da sessão não informado' }, { status: 400 })
+    }
+    
     const session = await prisma.workoutSession.update({
       where: { id: sessionId, userId: user.id },
       data: { endTime: new Date() }
     })
     
-    return Response.json(session)
+    return Response.json({
+      id: session.id,
+      userId: session.userId,
+      workoutPlanId: session.workoutPlanId,
+      dayIndex: session.dayIndex,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      seriesData: JSON.parse(session.seriesData)
+    })
   } catch (error) {
-    return Response.json({ error: 'Erro interno' }, { status: 500 })
+    console.error('Erro ao finalizar treino:', error)
+    return Response.json({ error: error.message }, { status: 500 })
   }
 }
