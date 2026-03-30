@@ -10,6 +10,10 @@ export async function POST(request) {
     
     const { workoutPlanId, dayIndex } = await request.json()
     
+    if (!workoutPlanId || dayIndex === undefined) {
+      return Response.json({ error: 'Dados incompletos' }, { status: 400 })
+    }
+    
     const session = await prisma.workoutSession.create({
       data: {
         userId: user.id,
@@ -20,8 +24,16 @@ export async function POST(request) {
       }
     })
     
-    return Response.json(session)
+    return Response.json({
+      id: session.id,
+      userId: session.userId,
+      workoutPlanId: session.workoutPlanId,
+      dayIndex: session.dayIndex,
+      startTime: session.startTime,
+      seriesData: JSON.parse(session.seriesData)
+    })
   } catch (error) {
-    return Response.json({ error: 'Erro interno' }, { status: 500 })
+    console.error('Erro ao iniciar treino:', error)
+    return Response.json({ error: error.message }, { status: 500 })
   }
 }
