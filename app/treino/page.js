@@ -32,6 +32,7 @@ export default function TreinoPage() {
 
   useEffect(() => {
     fetchData()
+    fetchSessions()
     return () => {
       if (timerInterval) clearInterval(timerInterval)
     }
@@ -42,6 +43,7 @@ export default function TreinoPage() {
       const res = await fetch('/api/workout')
       if (res.ok) {
         const data = await res.json()
+        console.log('Planos carregados:', data)
         setWorkoutPlans(data.plans || [])
         setCurrentWorkoutId(data.currentId)
       }
@@ -57,7 +59,7 @@ export default function TreinoPage() {
       const res = await fetch('/api/workout/sessions')
       if (res.ok) {
         const data = await res.json()
-        // Atualiza os planos com os dados das sessões
+        console.log('Sessões carregadas:', data)
         setWorkoutPlans(prev => prev.map(plan => {
           const sessions = data.filter(s => s.workoutPlanId === plan.id)
           return { ...plan, sessions }
@@ -69,14 +71,22 @@ export default function TreinoPage() {
   }
 
   const activateWorkout = async (id) => {
-    const res = await fetch('/api/workout/activate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id })
-    })
-    if (res.ok) {
-      setCurrentWorkoutId(id)
-      fetchData()
+    try {
+      const res = await fetch('/api/workout/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      })
+      if (res.ok) {
+        setCurrentWorkoutId(id)
+        fetchData()
+      } else {
+        const error = await res.json()
+        alert('Erro ao ativar: ' + (error.error || 'Tente novamente'))
+      }
+    } catch (error) {
+      console.error('Erro:', error)
+      alert('Erro de conexão')
     }
   }
 
@@ -149,67 +159,94 @@ export default function TreinoPage() {
       days: editingDays
     }
     
-    const res = await fetch('/api/workout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(planData)
-    })
-    
-    if (res.ok) {
-      setShowModal(false)
-      fetchData()
-      setEditingDays([])
-      setPlanName('')
-    } else {
-      const error = await res.json()
-      alert('Erro ao salvar: ' + (error.error || 'Tente novamente'))
+    try {
+      const res = await fetch('/api/workout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(planData)
+      })
+      
+      if (res.ok) {
+        setShowModal(false)
+        fetchData()
+        setEditingDays([])
+        setPlanName('')
+      } else {
+        const error = await res.json()
+        alert('Erro ao salvar: ' + (error.error || 'Tente novamente'))
+      }
+    } catch (error) {
+      console.error('Erro:', error)
+      alert('Erro de conexão')
     }
   }
 
   const startTraining = async (planId, dayIndex) => {
-    const res = await fetch('/api/workout/session/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workoutPlanId: planId, dayIndex })
-    })
-    
-    if (res.ok) {
-      const session = await res.json()
-      setTrainingSession(session)
-      setElapsedTime(0)
-      const interval = setInterval(() => {
-        setElapsedTime(prev => prev + 1)
-      }, 1000)
-      setTimerInterval(interval)
+    try {
+      console.log('Iniciando treino:', { planId, dayIndex })
+      
+      const res = await fetch('/api/workout/session/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workoutPlanId: planId, dayIndex })
+      })
+      
+      const data = await res.json()
+      console.log('Resposta do servidor:', data)
+      
+      if (res.ok) {
+        setTrainingSession(data)
+        setElapsedTime(0)
+        const interval = setInterval(() => {
+          setElapsedTime(prev => prev + 1)
+        }, 1000)
+        setTimerInterval(interval)
+      } else {
+        alert('Erro ao iniciar treino: ' + (data.error || 'Tente novamente'))
+      }
+    } catch (error) {
+      console.error('Erro ao iniciar treino:', error)
+      alert('Erro de conexão ao iniciar treino')
     }
   }
 
   const updateSeriesWeight = async (exerciseIdx, setIdx, weight, exercise) => {
     if (!trainingSession) return
     
-    // Atualizar localmente
-    const newSeriesData = { ...trainingSession.seriesData }
-    newSeriesData[`${exerciseIdx}_${setIdx}`] = { weight }
-    setTrainingSession({ ...trainingSession, seriesData: newSeriesData })
-    
-    // Salvar no servidor
-    const res = await fetch('/api/workout/session/update', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: trainingSession.id,
-        exerciseIdx,
-        setIdx,
-        weight,
-        exerciseName: exercise.name
+    try {
+      console.log('Atualizando peso:', { exerciseIdx, setIdx, weight })
+      
+      // Atualizar localmente
+      const newSeriesData = { ...trainingSession.seriesData }
+      newSeriesData[`${exerciseIdx}_${setIdx}`] = { weight }
+      setTrainingSession({ ...trainingSession, seriesData: newSeriesData })
+      
+      // Salvar no servidor
+      const res = await fetch('/api/workout/session/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: trainingSession.id,
+          exerciseIdx,
+          setIdx,
+          weight,
+          exerciseName: exercise.name
+        })
       })
-    })
-    
-    if (res.ok) {
-      const updated = await res.json()
-      setTrainingSession(updated)
-      // Recarregar dados para atualizar histórico
-      fetchData()
+      
+      const data = await res.json()
+      console.log('Resposta atualização:', data)
+      
+      if (res.ok) {
+        setTrainingSession(data)
+        // Recarregar dados para atualizar histórico
+        fetchData()
+        fetchSessions()
+      } else {
+        console.error('Erro na atualização:', data.error)
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar peso:', error)
     }
   }
 
@@ -218,19 +255,27 @@ export default function TreinoPage() {
     
     if (timerInterval) clearInterval(timerInterval)
     
-    const res = await fetch('/api/workout/session/finish', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: trainingSession.id })
-    })
-    
-    if (res.ok) {
-      setTrainingSession(null)
-      setTimerInterval(null)
-      setElapsedTime(0)
-      fetchData()
-      fetchSessions()
-      alert('Treino finalizado com sucesso! 🎉')
+    try {
+      const res = await fetch('/api/workout/session/finish', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: trainingSession.id })
+      })
+      
+      if (res.ok) {
+        setTrainingSession(null)
+        setTimerInterval(null)
+        setElapsedTime(0)
+        fetchData()
+        fetchSessions()
+        alert('Treino finalizado com sucesso! 🎉')
+      } else {
+        const error = await res.json()
+        alert('Erro ao finalizar: ' + (error.error || 'Tente novamente'))
+      }
+    } catch (error) {
+      console.error('Erro ao finalizar:', error)
+      alert('Erro de conexão')
     }
   }
 
@@ -241,6 +286,8 @@ export default function TreinoPage() {
   }
 
   const activePlan = workoutPlans.find(p => p.id === currentWorkoutId)
+  const selectedDayData = activePlan?.days?.[selectedDay]
+  const hasExercises = selectedDayData?.exercises?.length > 0
 
   if (loading) return (
     <div className="flex justify-center items-center h-64">
@@ -277,40 +324,45 @@ export default function TreinoPage() {
             Dia: <strong>{activePlan.days[trainingSession.dayIndex]?.name}</strong>
           </p>
           
-          {activePlan.days[trainingSession.dayIndex]?.exercises.map((exercise, exIdx) => (
-            <div key={exIdx} className="bg-white rounded-lg p-4 mb-4 shadow">
-              <h3 className="font-semibold text-lg mb-2">{exercise.name}</h3>
-              <p className="text-sm text-gray-600 mb-3">
-                Grupo: {exercise.group} | Séries: {exercise.sets} | Reps: {exercise.reps}
-              </p>
-              <p className="text-xs text-gray-500 mb-3">
-                💪 Máximo já usado: <strong className="text-blue-600">{exercise.maxWeightEver || 0} kg</strong>
-                {exercise.lastWeights?.length > 0 && ` | Último treino: ${exercise.lastWeights[exercise.lastWeights.length - 1]} kg`}
-              </p>
-              
-              <div className="space-y-2">
-                {[...Array(exercise.sets)].map((_, setIdx) => {
-                  const seriesKey = `${exIdx}_${setIdx}`
-                  const seriesData = trainingSession.seriesData?.[seriesKey] || {}
-                  return (
-                    <div key={setIdx} className="flex items-center gap-3 bg-gray-50 p-2 rounded">
-                      <span className="text-sm font-medium w-16">Série {setIdx + 1}:</span>
-                      <input
-                        type="number"
-                        placeholder="Peso (kg)"
-                        value={seriesData.weight || ''}
-                        onChange={(e) => updateSeriesWeight(exIdx, setIdx, parseFloat(e.target.value), exercise)}
-                        className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                        step="0.5"
-                      />
-                      <span className="text-sm">kg</span>
-                      <span className="text-sm text-gray-500">x {exercise.reps} reps</span>
-                    </div>
-                  )
-                })}
+          {activePlan.days[trainingSession.dayIndex]?.exercises?.map((exercise, exIdx) => {
+            const exerciseHistory = exercise.lastWeights || []
+            const lastWeight = exerciseHistory.length > 0 ? exerciseHistory[exerciseHistory.length - 1] : 0
+            
+            return (
+              <div key={exIdx} className="bg-white rounded-lg p-4 mb-4 shadow">
+                <h3 className="font-semibold text-lg mb-2">{exercise.name}</h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  Grupo: {exercise.group} | Séries: {exercise.sets} | Reps: {exercise.reps}
+                </p>
+                <p className="text-xs text-gray-500 mb-3">
+                  💪 Máximo já usado: <strong className="text-blue-600">{exercise.maxWeightEver || 0} kg</strong>
+                  {lastWeight > 0 && ` | Último treino: ${lastWeight} kg`}
+                </p>
+                
+                <div className="space-y-2">
+                  {[...Array(exercise.sets)].map((_, setIdx) => {
+                    const seriesKey = `${exIdx}_${setIdx}`
+                    const seriesData = trainingSession.seriesData?.[seriesKey] || {}
+                    return (
+                      <div key={setIdx} className="flex items-center gap-3 bg-gray-50 p-2 rounded">
+                        <span className="text-sm font-medium w-16">Série {setIdx + 1}:</span>
+                        <input
+                          type="number"
+                          placeholder="Peso (kg)"
+                          value={seriesData.weight || ''}
+                          onChange={(e) => updateSeriesWeight(exIdx, setIdx, parseFloat(e.target.value), exercise)}
+                          className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                          step="0.5"
+                        />
+                        <span className="text-sm">kg</span>
+                        <span className="text-sm text-gray-500">x {exercise.reps} reps</span>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
           
           <button
             onClick={finishTraining}
@@ -333,144 +385,150 @@ export default function TreinoPage() {
                 onChange={(e) => setSelectedDay(parseInt(e.target.value))}
                 className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {activePlan.days.map((day, idx) => (
-                  <option key={idx} value={idx}>{day.name}</option>
+                {activePlan.days?.map((day, idx) => (
+                  <option key={idx} value={idx}>{day.name} ({day.exercises?.length || 0} exercícios)</option>
                 ))}
               </select>
             </div>
             <button
               onClick={() => startTraining(currentWorkoutId, selectedDay)}
-              className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors"
+              disabled={!hasExercises}
+              className={`bg-green-600 text-white px-6 py-2 rounded-lg transition-colors ${!hasExercises ? 'opacity-50 cursor-not-allowed' : 'hover:bg-green-700'}`}
             >
               ▶️ Iniciar Treino
             </button>
           </div>
+          {!hasExercises && selectedDayData && (
+            <p className="text-xs text-red-500 mt-2">Este dia não tem exercícios cadastrados. Edite o plano para adicionar exercícios.</p>
+          )}
+        </div>
+      )}
+
+      {!activePlan && !trainingSession && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+          <p className="text-yellow-800">Nenhum plano de treino ativo.</p>
+          <p className="text-yellow-600 text-sm mt-2">Crie um novo plano ou ative um existente.</p>
         </div>
       )}
 
       {/* Lista de planos */}
-      {workoutPlans.length === 0 ? (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-8 text-center">
-          <p className="text-yellow-800">Nenhum plano de treino criado ainda.</p>
-          <p className="text-yellow-600 text-sm mt-2">Clique em "+ Novo Plano" para começar!</p>
-        </div>
-      ) : (
-        <div className="grid gap-6">
-          {workoutPlans.map(plan => (
-            <div key={plan.id} className="bg-white rounded-lg shadow-md overflow-hidden">
-              {/* Cabeçalho do plano */}
-              <div className="p-4 border-b bg-gray-50">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <h3 className="font-semibold text-lg">{plan.name}</h3>
-                      {currentWorkoutId === plan.id && (
-                        <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-medium">
-                          ✅ ATIVO
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {plan.days?.length || 0} dias de treino
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Criado em: {new Date(plan.createdAt).toLocaleDateString('pt-BR')}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    {currentWorkoutId !== plan.id && (
-                      <button
-                        onClick={() => activateWorkout(plan.id)}
-                        className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-sm hover:bg-blue-200 transition-colors"
-                      >
-                        Ativar
-                      </button>
-                    )}
-                    <button
-                      onClick={() => toggleExpandPlan(plan.id)}
-                      className="text-gray-500 hover:text-gray-700 px-3 py-1 rounded-lg text-sm"
-                    >
-                      {expandedPlans[plan.id] ? '▲ Esconder' : '▼ Ver detalhes'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Detalhes expandidos */}
-              {expandedPlans[plan.id] && plan.days && plan.days.length > 0 && (
-                <div className="p-4 space-y-4">
-                  {plan.days.map((day, dayIdx) => (
-                    <div key={dayIdx} className="border rounded-lg overflow-hidden">
-                      <div className="bg-gray-100 px-4 py-2 font-semibold">
-                        📅 {day.name}
-                      </div>
-                      <div className="p-3">
-                        {day.exercises && day.exercises.length > 0 ? (
-                          <div className="space-y-3">
-                            {day.exercises.map((exercise, exIdx) => (
-                              <div key={exIdx} className="bg-gray-50 rounded-lg p-3">
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <h4 className="font-medium">{exercise.name}</h4>
-                                    <p className="text-xs text-gray-500">Grupo: {exercise.group}</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-medium">{exercise.sets} séries</p>
-                                    <p className="text-sm">{exercise.reps} repetições</p>
-                                  </div>
-                                </div>
-                                {exercise.maxWeightEver > 0 && (
-                                  <div className="mt-2 text-xs text-blue-600">
-                                    🏆 Máximo já usado: {exercise.maxWeightEver} kg
-                                  </div>
-                                )}
-                                {exercise.lastWeights && exercise.lastWeights.length > 0 && (
-                                  <div className="mt-1 text-xs text-gray-500">
-                                    📊 Últimos pesos: {exercise.lastWeights.slice(-3).join(' kg, ')} kg
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-gray-500 text-sm">Nenhum exercício cadastrado</p>
+      {workoutPlans.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold text-gray-700">📚 Seus Planos</h2>
+          <div className="grid gap-4">
+            {workoutPlans.map(plan => (
+              <div key={plan.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+                <div className="p-4 border-b bg-gray-50">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <h3 className="font-semibold text-lg">{plan.name}</h3>
+                        {currentWorkoutId === plan.id && (
+                          <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-medium">
+                            ✅ ATIVO
+                          </span>
                         )}
                       </div>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {plan.days?.length || 0} dias de treino
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Criado em: {new Date(plan.createdAt).toLocaleDateString('pt-BR')}
+                      </p>
                     </div>
-                  ))}
+                    <div className="flex gap-2">
+                      {currentWorkoutId !== plan.id && (
+                        <button
+                          onClick={() => activateWorkout(plan.id)}
+                          className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-sm hover:bg-blue-200 transition-colors"
+                        >
+                          Ativar
+                        </button>
+                      )}
+                      <button
+                        onClick={() => toggleExpandPlan(plan.id)}
+                        className="text-gray-500 hover:text-gray-700 px-3 py-1 rounded-lg text-sm"
+                      >
+                        {expandedPlans[plan.id] ? '▲ Esconder' : '▼ Ver detalhes'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              )}
-              
-              {/* Sessões realizadas */}
-              {plan.sessions && plan.sessions.length > 0 && expandedPlans[plan.id] && (
-                <div className="px-4 pb-4">
-                  <details className="mt-2">
-                    <summary className="text-sm text-blue-600 cursor-pointer">📊 Histórico de treinos ({plan.sessions.length})</summary>
-                    <div className="mt-2 space-y-2">
-                      {plan.sessions.slice(-5).reverse().map(session => (
-                        <div key={session.id} className="bg-gray-50 rounded p-2 text-sm">
-                          <div className="flex justify-between">
-                            <span>Dia {session.dayIndex + 1}</span>
-                            <span className="text-gray-500">{new Date(session.startTime).toLocaleDateString('pt-BR')}</span>
-                          </div>
-                          {session.endTime && (
-                            <div className="text-xs text-gray-500">
-                              Duração: {Math.round((new Date(session.endTime) - new Date(session.startTime)) / 60000)} min
+                
+                {expandedPlans[plan.id] && plan.days && plan.days.length > 0 && (
+                  <div className="p-4 space-y-4">
+                    {plan.days.map((day, dayIdx) => (
+                      <div key={dayIdx} className="border rounded-lg overflow-hidden">
+                        <div className="bg-gray-100 px-4 py-2 font-semibold">
+                          📅 {day.name} ({day.exercises?.length || 0} exercícios)
+                        </div>
+                        <div className="p-3">
+                          {day.exercises && day.exercises.length > 0 ? (
+                            <div className="space-y-3">
+                              {day.exercises.map((exercise, exIdx) => (
+                                <div key={exIdx} className="bg-gray-50 rounded-lg p-3">
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <h4 className="font-medium">{exercise.name}</h4>
+                                      <p className="text-xs text-gray-500">Grupo: {exercise.group}</p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-sm font-medium">{exercise.sets} séries</p>
+                                      <p className="text-sm">{exercise.reps} repetições</p>
+                                    </div>
+                                  </div>
+                                  {exercise.maxWeightEver > 0 && (
+                                    <div className="mt-2 text-xs text-blue-600">
+                                      🏆 Máximo já usado: {exercise.maxWeightEver} kg
+                                    </div>
+                                  )}
+                                  {exercise.lastWeights && exercise.lastWeights.length > 0 && (
+                                    <div className="mt-1 text-xs text-gray-500">
+                                      📊 Últimos: {exercise.lastWeights.slice(-3).map(w => `${w}kg`).join(' → ')}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
                             </div>
-                          )}
-                          {session.seriesData && Object.keys(session.seriesData).length > 0 && (
-                            <div className="text-xs text-gray-500">
-                              Séries realizadas: {Object.keys(session.seriesData).length}
-                            </div>
+                          ) : (
+                            <p className="text-gray-500 text-sm text-center py-4">Nenhum exercício cadastrado</p>
                           )}
                         </div>
-                      ))}
-                    </div>
-                  </details>
-                </div>
-              )}
-            </div>
-          ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {plan.sessions && plan.sessions.length > 0 && expandedPlans[plan.id] && (
+                  <div className="px-4 pb-4">
+                    <details className="mt-2">
+                      <summary className="text-sm text-blue-600 cursor-pointer">📊 Histórico de treinos realizados ({plan.sessions.length})</summary>
+                      <div className="mt-2 space-y-2 max-h-64 overflow-y-auto">
+                        {plan.sessions.slice().reverse().map(session => (
+                          <div key={session.id} className="bg-gray-50 rounded p-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="font-medium">Dia {session.dayIndex + 1}</span>
+                              <span className="text-gray-500">{new Date(session.startTime).toLocaleDateString('pt-BR')}</span>
+                            </div>
+                            {session.endTime && (
+                              <div className="text-xs text-gray-500">
+                                ⏱️ Duração: {Math.round((new Date(session.endTime) - new Date(session.startTime)) / 60000)} minutos
+                              </div>
+                            )}
+                            {session.seriesData && Object.keys(session.seriesData).length > 0 && (
+                              <div className="text-xs text-gray-500">
+                                📝 Séries registradas: {Object.keys(session.seriesData).length}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -591,7 +649,8 @@ export default function TreinoPage() {
               
               <button
                 onClick={saveWorkoutPlan}
-                className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-medium transition-colors"
+                disabled={!planName || editingDays.length === 0}
+                className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 💾 Salvar e Ativar Plano
               </button>
