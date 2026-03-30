@@ -18,6 +18,7 @@ model User {
   profile       Profile?
   dietPlans     DietPlan[]
   workoutPlans  WorkoutPlan[]
+  workoutSessions WorkoutSession[]
 }
 
 model Profile {
@@ -60,12 +61,15 @@ model WorkoutPlan {
   startDate       DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  
+  workoutSessions WorkoutSession[]
 }
 
 model WorkoutSession {
   id              String    @id @default(cuid())
   userId          String
   workoutPlanId   String
+  user            User      @relation(fields: [userId], references: [id])
   workoutPlan     WorkoutPlan @relation(fields: [workoutPlanId], references: [id])
   dayIndex        Int
   startTime       DateTime
