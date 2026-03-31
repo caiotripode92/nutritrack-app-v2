@@ -10,7 +10,7 @@ export async function POST(request) {
   try {
     const { email, password } = await request.json()
     
-    console.log('Login attempt for:', email)
+    console.log('Login attempt:', email)
     
     // Buscar usuário
     const user = await prisma.user.findUnique({
@@ -22,7 +22,7 @@ export async function POST(request) {
       return Response.json({ error: 'Usuário não encontrado' }, { status: 401 })
     }
     
-    console.log('User found:', user.id)
+    console.log('User found, checking password')
     
     // Verificar senha
     const valid = await bcrypt.compare(password, user.password)
@@ -32,21 +32,20 @@ export async function POST(request) {
       return Response.json({ error: 'Senha inválida' }, { status: 401 })
     }
     
+    console.log('Password valid, generating token')
+    
     // Gerar token
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' })
     
-    console.log('Token generated, creating response')
-    
-    // Criar resposta
+    // Criar resposta com cookie
     const response = Response.json({ 
       success: true,
       user: { id: user.id, name: user.name, email: user.email } 
     })
     
-    // Set cookie MANUALMENTE
     response.headers.set(
       'Set-Cookie',
-      `token=${token}; HttpOnly; Path=/; Max-Age=604800; SameSite=Lax`
+      `token=${token}; HttpOnly; Path=/; Max-Age=604800; SameSite=Lax; ${process.env.NODE_ENV === 'production' ? 'Secure;' : ''}`
     )
     
     console.log('Login successful')
