@@ -4,58 +4,25 @@ import { prisma } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'chave-secreta-temporaria'
+const SECRET = process.env.JWT_SECRET || 'qualquer-chave'
 
-export async function POST(request) {
+export async function POST(req) {
   try {
-    const { email, password } = await request.json()
+    const { email, password } = await req.json()
     
-    console.log('Login attempt:', email)
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user) return Response.json({ error: 'Usuário não encontrado' }, { status: 401 })
     
-    // Buscar usuário
-    const user = await prisma.user.findUnique({
-      where: { email }
-    })
+    const ok = await bcrypt.compare(password, user.password)
+    if (!ok) return Response.json({ error: 'Senha inválida' }, { status: 401 })
     
-    if (!user) {
-      console.log('User not found')
-      return Response.json({ error: 'Usuário não encontrado' }, { status: 401 })
-    }
+    const token = jwt.sign({ userId: user.id }, SECRET, { expiresIn: '7d' })
     
-    console.log('User found, checking password')
+    const res = Response.json({ success: true, user: { id: user.id, name: user.name, email: user.email } })
+    res.headers.set('Set-Cookie', `token=${token}; Path=/; Max-Age=604800; SameSite=Lax`)
     
-    // Verificar senha
-    const valid = await bcrypt.compare(password, user.password)
-    
-    if (!valid) {
-      console.log('Invalid password')
-      return Response.json({ error: 'Senha inválida' }, { status: 401 })
-    }
-    
-    console.log('Password valid, generating token')
-    
-    // Gerar token
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' })
-    
-    // Criar resposta com cookie
-    const response = Response.json({ 
-      success: true,
-      user: { id: user.id, name: user.name, email: user.email } 
-    })
-    
-    response.headers.set(
-      'Set-Cookie',
-      `token=${token}; HttpOnly; Path=/; Max-Age=604800; SameSite=Lax; ${process.env.NODE_ENV === 'production' ? 'Secure;' : ''}`
-    )
-    
-    console.log('Login successful')
-    return response
-    
-  } catch (error) {
-    console.error('Login error:', error)
-    return Response.json({ 
-      error: 'Erro interno no servidor',
-      details: error.message 
-    }, { status: 500 })
+    return res
+  } catch (err) {
+    return Response.json({ error: err.message }, { status: 500 })
   }
 }
